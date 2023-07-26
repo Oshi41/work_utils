@@ -427,7 +427,7 @@ E.scan_for_test_descriptions = (abs_path) => etask(function* () {
     if (!map.size)
         return [];
 
-    return Array.from(map.values()).flatMap(x=>x.cases);
+    return _.uniq(Array.from(map.values()).flatMap(x=>x.cases));
 });
 
 E.zrequire = zrequire;
