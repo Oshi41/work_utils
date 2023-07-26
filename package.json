@@ -11,6 +11,12 @@
   "license": "ISC",
   "dependencies": {
     "nedb": "^1.8.0",
-    "lodash4": "^2.0.0"
+    "lodash4": "^2.0.0",
+    "yargs": "^17.7.2",
+    "apply-patch": "^0.1.2"
+  },
+  "devDependencies": {
+    "@types/yargs": "^17.0.24",
+    "@types/nedb": "^1.8.13"
   }
 }

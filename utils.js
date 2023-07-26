@@ -1,253 +1,233 @@
 #!/usr/bin/env node
 const nedb = require('nedb');
-const _ = require('lodash4');
+const _ = require('lodash');
 const path = require('path');
 const fs = require('fs');
 const zrequire = str => require(path.resolve('/usr/local/hola/system/scripts/', str));
 zrequire('../../util/config.js');
 const etask = zrequire('../../util/etask.js');
-const E = exports;
+const exec = zrequire('../../util/exec.js');
+const conv = zrequire('../../util/conv.js');
+const E = exports, dbs = {}, reset = '\x1b[0m', green = '\x1b[42m', yellow = '\x1b[43m';
 
-E.db_folder = path.join(require("os").homedir(), '_database');
-let db = {}, wait_et = etask.wait();
-
-class exec_time {
-    /**
-     * @type {Date}
-     */
-    date;
-    /**
-     * @type {number}
-     */
-    time;
-    /**
-     * @type {string}
-     */
-    file;
-    /**
-     * @type {string}
-     */
-    params;
-    /**
-     * @type {boolean}
-     */
-    success;
-    /**
-     * @type {string | undefined}
-     */
-    error;
-
-    constructor(obj) {
-        if (obj) {
-            Object.assign(this, obj);
-        }
-        this.success = !(!!this.error);
-        this.date = this.date || new Date();
-        this.error = this.error || ' ';
-        clear_undef(this);
-    }
-}
-
-class test_case {
-    /**
-     * @type {string}
-     */
-    file;
-    /**
-     * @type {string}
-     */
-    revision;
-    /**
-     * @type {description}
-     */
-    description;
-    /**
-     * @type {string}
-     */
-    name;
-
-    constructor(obj) {
-        if (obj)
-            Object.assign(this, obj);
-    }
-}
-
-class ignored_test {
-    /**
-     * @type {string}
-     */
-    file;
-    /**
-     * @type {Date}
-     */
-    date;
-    /**
-     * @type {string}
-     */
-    why;
-
-    constructor(obj) {
-        if (obj)
-            Object.assign(this, obj);
-    }
-}
-
-const find = (db_name, ...opt) => etask(function* () {
-    wait_et && (yield this.wait_ext(wait_et));
-    let _this = this;
-    db[db_name].find(...[...opt, (err, docs) => {
+E.db_folder = path.join(require('os').homedir(), '_database');
+let init_et, sync;
+const find = (db, q, proj = null, sync_et = null) => etask(function* () {
+    sync_et && (yield sync_et);
+    let _this = sync_et = this;
+    this.finally(() => sync_et = null);
+    db.find(q, proj, (err, docs) => {
         if (err)
-            throw err;
+            _this.throw(err);
         _this.return(docs);
-    }]);
-    yield this.wait();
-})
-const insert = (db_name, doc) => etask(function* () {
-    wait_et && (yield this.wait_ext(wait_et));
-    let _this = this;
-    db[db_name].insert(doc, (err, upd_doc) => {
-        if (err)
-            throw err;
-        _this.return(upd_doc);
-    });
+    })
     yield this.wait();
 });
-const count = (db_name, opt) => etask(function* () {
-    wait_et && (yield this.wait_ext(wait_et));
-    let _this = this;
-    db[db_name].count(opt, (err, count) => {
+const insert = (db, doc, sync_et = null) => etask(function* () {
+    sync_et && (yield sync_et);
+    let _this = sync_et = this;
+    this.finally(() => sync_et = null);
+    db.insert(doc, (err, docs) => {
         if (err)
-            throw err;
-        _this.return(count);
-    });
+            _this.throw(err);
+        _this.return(docs);
+    })
     yield this.wait();
 });
-const remove = (db_name, ...opt) => etask(function* () {
-    wait_et && (yield this.wait_ext(wait_et));
-    let _this = this;
-    db[db_name].remove(...[...opt, (err, count) => {
+const count = (db, q, sync_et = null) => etask(function* () {
+    sync_et && (yield sync_et);
+    let _this = sync_et = this;
+    this.finally(() => sync_et = null);
+    db.count(q, (err, count) => {
         if (err)
-            throw err;
+            _this.throw(err);
         _this.return(count);
-    }]);
+    })
+    yield this.wait();
+});
+const remove = (db, q, sync_et = null) => etask(function* () {
+    sync_et && (yield sync_et);
+    let _this = sync_et = this;
+    this.finally(() => sync_et = null);
+    db.remove(q, (err, count) => {
+        if (err)
+            _this.throw(err);
+        _this.return(count);
+    })
     yield this.wait();
 });
 
-E.tables = {
-    exec_time: {
-        clazz: exec_time,
-        /**
-         * Average exec time for file with params
-         * @param obj {exec_time}
-         * @return {*}
-         */
-        avg: (obj) => etask(function* () {
-            const docs = yield find('exec_time', obj, {time: 1});
-            return _.meanBy(docs, 'time');
-        }),
-        /**
-         * Inserts new doc
-         * @param obj {exec_time}
-         * @return {exec_time}
-         */
-        add: obj => insert('exec_time', obj),
-    },
-    test_case: {
-        clazz: test_case,
-        /**
-         * @param obj {test_case}
-         * @return {test_case}
-         */
-        add: obj => insert('test_case', obj),
-        /**
-         * @param obj {test_case}
-         * @return {boolean}
-         */
-        exists: obj => etask(function* () {
-            const _count = yield count('test_case', obj)
-            return _count > 0;
-        }),
-        /**
-         * Replace old file test cases with new ones
-         * @param arr {Array<test_case>}
-         * @return {boolean}
-         */
-        replace: arr => etask(function* () {
-            if (!arr?.length)
-                return false;
-            yield etask.all(_.uniq(arr.map(x => ({file: x.file})))
-                .map(x => remove('test_case', x, {multi: true})));
-            for (let c of arr)
-                yield insert('test_case', c);
-        }),
-        /**
-         * All describes for file
-         * @param file {string}
-         * @return {Array<string>}
-         */
-        all_describes: file => etask(function* () {
-            let results = yield find('test_case', {file}, {description: 1});
-            return _.uniq(results.map(x => x.description));
-        }),
-    },
-    ignored_tests: {
-        clazz: ignored_test,
-        add: obj => insert('ignored_tests', obj),
-        rm: obj => remove('ignored_tests', obj),
-        search_ignored: arr => etask(function* () {
-            arr = Array.isArray(arr) ? arr : [arr];
-            let res = yield find('ignored_tests', {file: {$in: arr}});
-            return res.map(x => x.file);
-        }),
-    }
-}
+/**
+ * @typedef {Object} exec_time
+ * @property {Date} date - scheduled test date
+ * @property {Number} time  - running time
+ * @property {string} file - relative zon path / exec file name
+ * @property {string?} params - run params / test grep / etc
+ * @property {boolean?} success - run was successful
+ * @property {string?} error - possible error
+ */
 
-etask(function* _main() {
-    this.finally(() => {
-        wait_et.continue();
-        wait_et = undefined;
-    });
-    this.on('uncaught', e => console.error(e));
-    if (!fs.existsSync(E.db_folder))
-        fs.mkdirSync(E.db_folder);
-    let ensure_index = (db, opt) => etask(function* () {
-        let _this = this;
-        db.ensureIndex(opt, err => {
-            if (err)
-                throw err;
-            _this.continue();
+/**
+ * @typedef {Object} ignored_test
+ * @property {string} file - relative zon path
+ * @property {string?} reason - why we add to ignore
+ */
+
+/**
+ * @typedef {Object} test_case
+ * @property
+ */
+
+/**
+ *
+ * @return {{
+ *     exec_time: {
+ *         add: (exec_time)=>void,
+ *         avg: (exec_time)=>number
+ *     },
+ *     ignored_tests: {
+ *          add: (ignored_test)=>void,
+ *          search_ignored: ([])=>string[],
+ *     }
+ * }}
+ */
+E.tables = () => etask(function* () {
+    yield init_et;
+
+    if (_.isEmpty(dbs)) {
+        // init
+        init_et = this;
+
+        this.finally(() => {
+            init_et = null
         });
-        yield this.wait();
-    });
-    let create_db = opt => etask(function* () {
-        let _this = this;
-        let db = new nedb(Object.assign(opt, {
-            autoload: true, onload: err => {
+        this.on('uncaught', e => console.error(e));
+
+        if (!fs.existsSync(E.db_folder))
+            fs.mkdirSync(E.db_folder);
+
+        let ensure_index = (db, opt) => etask(function* () {
+            let _this = this;
+            db.ensureIndex(opt, err => {
                 if (err)
                     throw err;
                 _this.continue();
-            }
-        }));
-        yield this.wait();
-        return db;
-    });
-    db.exec_time = yield create_db({filename: path.join(E.db_folder, 'exec_time.jsonl')});
-    db.test_case = yield create_db({filename: path.join(E.db_folder, 'test_case.jsonl')});
-    db.ignored_tests = yield create_db({filename: path.join(E.db_folder, 'ignored.jsonl')});
+            });
+            yield this.wait();
+        });
+        let create_db = opt => etask(function* () {
+            let _this = this;
+            let db = new nedb(Object.assign(opt, {
+                autoload: true, onload: err => {
+                    if (err)
+                        throw err;
+                    _this.continue();
+                }
+            }));
+            yield this.wait();
+            return db;
+        });
 
-    yield ensure_index(db.exec_time, {fieldName: 'error', sparse: true});
-    yield ensure_index(db.exec_time, {fieldName: 'params', sparse: true});
-    yield ensure_index(db.exec_time, {fieldName: 'time'});
-    yield ensure_index(db.exec_time, {fieldName: 'date'});
-    yield ensure_index(db.exec_time, {fieldName: 'file'});
+        dbs.exec_time = yield create_db({filename: path.join(E.db_folder, 'exec_time.jsonl')});
+        dbs.test_case = yield create_db({filename: path.join(E.db_folder, 'test_case.jsonl')});
+        dbs.ignored_tests = yield create_db({filename: path.join(E.db_folder, 'ignored.jsonl')});
 
-    yield ensure_index(db.test_case, {fieldName: 'file'});
-    yield ensure_index(db.test_case, {fieldName: 'revision'});
-    yield ensure_index(db.test_case, {fieldName: 'description', sparse: true});
-    yield ensure_index(db.test_case, {fieldName: 'name', sparse: true});
+        yield ensure_index(dbs.exec_time, {fieldName: 'error', sparse: true});
+        yield ensure_index(dbs.exec_time, {fieldName: 'params', sparse: true});
+        yield ensure_index(dbs.exec_time, {fieldName: 'time'});
+        yield ensure_index(dbs.exec_time, {fieldName: 'date'});
+        yield ensure_index(dbs.exec_time, {fieldName: 'file'});
 
-    yield ensure_index(db.ignored_tests, {fieldName: 'file', sparse: true});
+        yield ensure_index(dbs.test_case, {fieldName: 'file'});
+        yield ensure_index(dbs.test_case, {fieldName: 'revision'});
+        yield ensure_index(dbs.test_case, {fieldName: 'description', sparse: true});
+        yield ensure_index(dbs.test_case, {fieldName: 'name', sparse: true});
+
+        yield ensure_index(dbs.ignored_tests, {fieldName: 'file', sparse: true});
+
+        let {exec_time, test_case, ignored_tests} = dbs;
+
+        // Public API
+        dbs.exec_time = {
+            add: opt => insert(exec_time, opt, sync),
+            avg: opt => etask(function* () {
+                let docs = yield find(exec_time, opt, {time: 1});
+                let sum = docs.map(x=>x.time).reduce((p, c) => p+c, 0);
+                return sum / docs.length;
+            }),
+        };
+        // dbs.test_case = {
+        //     add: opt => insert(inner_db.test_case, opt),
+        //     exists: opt => etask(function* () {
+        //         return ((yield count(inner_db.test_case, opt)) > 0);
+        //     }),
+        //     replace: arr => etask(function* () {
+        //         if (!arr?.length)
+        //             return false;
+        //         yield etask.all(_.uniq(arr.map(x => ({file: x.file})))
+        //             .map(x => remove(inner_db.test_case, x, {multi: true})));
+        //         for (let c of arr)
+        //             yield insert(inner_db.test_case, c);
+        //     }),
+        // };
+        dbs.ignored_tests = {
+            add: opt => insert(ignored_tests, opt),
+            search_ignored: arr => etask(function* () {
+                arr = Array.isArray(arr) ? arr : [arr];
+                if (!arr.length)
+                    return [];
+                let res = yield find(ignored_tests, {file: {$in: arr}});
+                return res.map(x => x.file);
+            }),
+        };
+    }
+    return dbs;
 });
+
+const time_map = new Map([
+    ['day', 1000 * 60 * 60 * 24],
+    ['hour', 1000 * 60 * 60],
+    ['min', 1000 * 60],
+    ['sec', 1000],
+]);
+E.fmt_num = (num, unit_or_opt, opt) => {
+    if (unit_or_opt == 'time') {
+        let res = num;
+        for (let [name, multiplier] of time_map) {
+            if (multiplier <= Math.abs(res)) {
+                return conv.fmt_num(res / multiplier) + ' ' + name;
+            }
+        }
+        return conv.fmt_num(res) + ' mls';
+    } else {
+        return conv.fmt_num(num, unit_or_opt, opt);
+    }
+}
+
+/**
+ * Searches zon root folder
+ * @param filepath - file or folder inside zon dir
+ * @return {undefined|*|string}
+ */
+E.get_zon_root = filepath => {
+    if (fs.existsSync(filepath) && filepath != '/') {
+        if (fs.lstatSync(filepath)?.isDirectory()) {
+            const cvs_path = path.resolve(filepath, 'CVS', 'Repository');
+            if (fs.existsSync(cvs_path)) {
+                const first_line = fs.readFileSync(cvs_path, 'utf8').split('\n')[0];
+                if (first_line == 'zon') {
+                    return filepath + '/';
+                }
+            }
+        }
+        return E.get_zon_root(path.dirname(filepath));
+    }
+    return undefined;
+};
+
+E.get_zon_relative = filepath => {
+    return path.relative(E.get_zon_root(filepath), filepath);
+}
 
 /**
  *
@@ -264,7 +244,7 @@ E.exec_and_record = (fn, file, params = '', {
 } = {}) => etask(function* () {
     let start = new Date(), err;
     if (log) {
-        time = time || (yield db.tables.exec_time.avg({file, params}));
+        time = time || (yield (yield E.tables()).exec_time.avg({file, params}));
         if (time) {
             log?.(`~ ` + E.fmt_num(time, 'time'));
         }
@@ -293,12 +273,12 @@ E.exec_and_record = (fn, file, params = '', {
         }
     } finally {
         let run_time = new Date() - start;
-        yield db.tables.exec_time.add({
+        yield (yield E.tables()).exec_time.add({
             date: start, file, params: params,
             time: run_time, error: err
         });
         if (log) {
-            const time = yield db.tables.exec_time.avg({file, params});
+            const time = yield (yield E.tables()).exec_time.avg({file, params});
             if (time) {
                 let diff = time - run_time;
                 let txt = 'Took ' + E.fmt_num(run_time, 'time');
@@ -349,11 +329,25 @@ E.parse_cvs_status = (root) => E.exec_and_record(() => etask(function* () {
         }
     }
     return result;
-}), 'cvs', '-Q status root', {log: data=>console.log(`[CVS check]`, data)});
+}), 'cvs', '-Q status root', {log: data => console.log(`[CVS check]`, data)});
+
+/**
+ * Returns test type for file if present
+ * @param file {string}
+ * @return {'mocha' | 'selenium' | undefined}
+ */
+E.get_test_type = (file) => {
+    if (fs.statSync(file)?.isFile()) {
+        let txt = fs.readFileSync(file, 'utf8');
+        const is_test = /^describe\(/g.test(txt) || txt.includes(' describe(');
+        if (is_test)
+            return txt.includes('selenium.') ? 'selenium' : 'mocha';
+    }
+}
 
 E.find_test_files = (root, {test_type, spinner}) => etask(function* () {
     root = E.get_zon_root(root);
-    let files = yield parse_cvs_status(root);
+    let files = yield E.parse_cvs_status(root);
     spinner?.('cvs checked');
     let changed = new Map(Array.from(files.entries()).filter(x => x[1].modified));
     console.log('\n', `Changed files: [${Array.from(changed.keys()).join(', ')}]`);
@@ -365,7 +359,9 @@ E.find_test_files = (root, {test_type, spinner}) => etask(function* () {
                 result.push(file);
         }
     }
-    const ignored = yield db.tables.ignored_tests.search_ignored(result);
+    const ignored = yield (yield E.tables()).ignored_tests.search_ignored(result);
     result = result.filter(x => !ignored.includes(x));
     return result;
 });
+
+E.zrequire = zrequire;
