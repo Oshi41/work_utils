@@ -16,7 +16,8 @@ const find = (db, q, proj = null, sync_et = null) => etask(function* () {
     sync_et && (yield sync_et);
     let _this = sync_et = this;
     this.finally(() => sync_et = null);
-    db.find(q, proj, (err, docs) => {
+    let args = [q, proj].filter(Boolean)
+    db.find(...args, (err, docs) => {
         if (err)
             _this.throw(err);
         _this.return(docs);
@@ -243,8 +244,9 @@ E.exec_and_record = (fn, file, params = '', {
     log = console.log, time, should_throw
 } = {}) => etask(function* () {
     let start = new Date(), err;
+    const {exec_time} = yield E.tables();
     if (log) {
-        time = time || (yield (yield E.tables()).exec_time.avg({file, params}));
+        time = time || (yield exec_time.avg({file, params}));
         if (time) {
             log?.(`~ ` + E.fmt_num(time, 'time'));
         }
@@ -273,12 +275,12 @@ E.exec_and_record = (fn, file, params = '', {
         }
     } finally {
         let run_time = new Date() - start;
-        yield (yield E.tables()).exec_time.add({
+        yield exec_time.add({
             date: start, file, params: params,
             time: run_time, error: err
         });
         if (log) {
-            const time = yield (yield E.tables()).exec_time.avg({file, params});
+            const time = yield exec_time.avg({file, params});
             if (time) {
                 let diff = time - run_time;
                 let txt = 'Took ' + E.fmt_num(run_time, 'time');
@@ -359,9 +361,73 @@ E.find_test_files = (root, {test_type, spinner}) => etask(function* () {
                 result.push(file);
         }
     }
-    const ignored = yield (yield E.tables()).ignored_tests.search_ignored(result);
+    const {ignored_tests} = yield E.tables();
+    const ignored = yield ignored_tests.search_ignored(result);
     result = result.filter(x => !ignored.includes(x));
     return result;
+});
+
+/**
+ * @param abs_path {string}
+ * @return {Map<string, {cases: string[], children: [], desc: string}>}
+ */
+E.scan_for_test_descriptions = (abs_path) => etask(function* () {
+    this.on('uncaught', e => console.error(e));
+    let res = yield exec.sys(['zmocha', '-P', abs_path], {
+        cwd: path.dirname(abs_path),
+        env: process.env,
+        stdall: 'pipe',
+        encoding: 'utf8',
+    });
+    let map = new Map();
+    if (!res.retval) {
+        /**
+         * @param arr {string[]} - zmocha lines print run
+         * @param index {number}
+         * @return {Map<string, {desc: string, cases: string[], children: object[]}>}
+         */
+        const parse_describe = (arr, index) => {
+            let describe_name = arr[index];
+            const get_space_count = (line)=>{
+                return '* -'.split(' ')
+                    .map(x => line.indexOf(x))
+                    .find(x => x >= 0);
+            }
+
+            let spaces_amount = get_space_count(describe_name);
+            let describe = {desc: describe_name.substring(spaces_amount+2).trim(),
+                cases: [], children: []};
+            map.set(describe_name, describe);
+            if (Number.isFinite(spaces_amount))
+            {
+                for (let i = index+1; i < arr.length; i++)
+                {
+                    let ln = arr[i], s_count = get_space_count(ln) ;
+                    if (s_count == spaces_amount+4)
+                    {
+                        if (ln.includes('*'))
+                        {
+                            parse_describe(arr, i);
+                            describe.children.push(map.get(ln));
+                        }
+
+                        if (ln.includes('-'))
+                            describe.cases.push(ln.substring(s_count+2).trim());
+                    }
+                    else if (s_count < spaces_amount)
+                        break;
+                }
+            }
+        };
+        const arr = res.stdall.toString().split('\n');
+        let i = arr.findIndex(x=>x.includes('* (root)'));
+        parse_describe(arr, i);
+    }
+
+    if (!map.size)
+        return [];
+
+    return Array.from(map.values()).flatMap(x=>x.cases);
 });
 
 E.zrequire = zrequire;

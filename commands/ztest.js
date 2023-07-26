@@ -1,5 +1,5 @@
 const {zrequire, exec_and_record: r_exec, get_zon_root,
-    find_test_files, get_zon_relative,
+    find_test_files, get_zon_relative, scan_for_test_descriptions,
     tables: _tables} = require('../utils.js');
 const path = require("path");
 const yargs_root = require('yargs');
@@ -27,35 +27,37 @@ const run_files = (files, opt) => etask(function* () {
     let failed = [];
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const greps = opt.separate ? yield scan_for_test_descriptions(file)
+            : ['.+'];
+        for (let j = 0; j < greps.length; j++)
+        {
+            let grep = greps[j];
+            const cmd = ['zmocha', '-T', path.basename(file), '-g', grep, '-t', 60000];
+            const cwd = path.dirname(file);
+            const relative = get_zon_relative(file);
+            if (Array.isArray(opt?.mocha_opt))
+                cmd.push(...opt.mocha_opt);
+            const success = yield tables.exec_time
+                .avg({file: relative, params: grep, success: true});
+            let res = yield r_exec({cmd, opt: {
+                    cwd, env: process.env, stdall: 'pipe',
+                    out: 'retval', encoding: 'utf8',}
+            }, relative, grep, {time: success});
+            let header = [`[${i + 1}/${files.length}]`];
+            if (greps.length > 1)
+                header.unshift(`[${j + 1}/${greps.length}]`);
+            header.push(`${relative}: ${grep} `)
+            header = header.join(' ');
+            let err_msg = res?.retval && res.stderr.substring(res.stderr.lastIndexOf('CRIT: '));
+            let print = err_msg ? console.error : console.log;
+            let msg = err_msg ? red + '☒ ' + header + '\n' + err_msg + reset
+                : green + '✓ ' + header + ' ' + reset;
+            print(msg);
 
-        const cmd = ['zmocha', '-T', path.basename(file), '-t', 60000];
-        const cwd = path.dirname(file);
-        const relative = get_zon_relative(file);
-        const grep = '.+';
-        if (Array.isArray(opt?.mocha_opt))
-            cmd.push(...opt.mocha_opt);
-        const success = yield tables.exec_time
-            .avg({file: relative, params: grep, success: true});
-        let res = yield r_exec({
-            cmd, opt: {
-                cwd,
-                env: process.env,
-                stdall: 'pipe',
-                out: 'retval',
-                encoding: 'utf8',
-            }
-        }, relative, undefined, {
-            time: success
-        });
-        let header = `[${i + 1}/${files.length}] ${relative}: ${grep} `;
-        let err_msg = res?.retval && res.stderr.substring(res.stderr.lastIndexOf('CRIT: '));
-        let print = err_msg ? console.error : console.log;
-        let msg = err_msg ? red + '☒ ' + header + '\n' + err_msg + reset
-            : green + '✓ ' + header + ' ' + reset;
-        print(msg);
+            if (err_msg)
+                failed.push(relative);
+        }
 
-        if (err_msg)
-            failed.push(relative);
     }
     return failed;
 });
@@ -63,6 +65,10 @@ const run_files = (files, opt) => etask(function* () {
 const run = {
     command: 'run',
     builder: yargs => yargs
+        .option('separate', {
+            desc: 'Run each test case separately',
+
+        })
         .option('test_type', {
             desc: 'Test type to run',
             type: 'string',
