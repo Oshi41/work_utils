@@ -2,29 +2,34 @@ const yargs_root = require("yargs");
 const path = require("path");
 const os = require('os');
 const fs = require('fs');
-const apply_patch = require('apply-patch');
-const {zrequire, parse_cvs_status, exec_and_record: r_exec} = require("../utils");
+const diff = require('diff');
+const _ = require('lodash');
+const {zrequire, parse_cvs_status, exec_and_record: r_exec} = require("../utils.js");
 const etask = zrequire('../../util/etask.js');
 const exec = zrequire('../../util/exec.js');
 
-const exec_and_record = (args, opt, file, descr)=>r_exec(()=>etask(function*(){
-    if (opt.hdr)
-    {
+const exec_and_record = (args, opt, file, descr) => {
+    if (opt.hdr) {
         let hdr = `[${opt.hdr}]`;
-        opt.log = d=>console.log(hdr, d);
+        opt.log = d => console.log(hdr, d.toString());
         delete opt.hdr;
     }
-    let res = yield exec.sys(args, {
-        env: process.env,
-        stdall: 'pipe',
-        encoding: 'utf8',
-        ...opt,
-    });
-    if (res.retval) {
-        throw new Error(res.stderr.toString());
-    }
-    return res;
-}), file, descr);
+    return r_exec(() => etask(function* () {
+        let sys_opts = {
+            env: process.env,
+            stdall: 'pipe',
+            encoding: 'utf8',
+            ..._.omit(opt, ['log']),
+        };
+        if (opt.transparent_log)
+            sys_opts.log = d=>console.log(d);
+        let res = yield exec.sys(args, sys_opts);
+        if (res.retval) {
+            throw new Error(res.stderr.toString());
+        }
+        return res;
+    }), file, descr, opt);
+};
 
 /**
  * @param root {string}
@@ -38,7 +43,7 @@ const create_patches = (root) => etask(function* () {
     console.log(`Found ${changes.length} changes, creating patches`);
     let result = new Map();
     yield etask.all_limit(10, changes, ([file,]) => etask(function* () {
-        let res = yield exec.sys(['cvs', 'diff', path.basename(file)],
+        let res = yield exec.sys(['cvs', 'diff', '-u', path.basename(file)],
             {
                 cwd: path.dirname(file),
                 env: process.env,
@@ -52,12 +57,39 @@ const create_patches = (root) => etask(function* () {
         let diff = res.stdall.toString();
         if (!diff)
             return;
+
+        // Rm such lines
+        // RCS file: /arch/cvs/zon/pkg/f1/f2/file.js,v
+        // retrieving revision 1.18
+        // diff -u -r1.18 file.js
+        diff = diff.split('\n');
+        diff.splice(2, 3);
+        diff = diff.join('\n');
         result.set(file, diff);
     }));
     if (!result.size)
         return;
     return result;
 });
+
+const apply_patches = patch_map => {
+    if (!patch_map.size)
+        return;
+    console.log('Apply patch');
+    for (let [file, patch_raw] of patch_map) {
+        let content = fs.readFileSync(file, 'utf-8');
+        try {
+            let patches = diff.parsePatch(patch_raw);
+            for (let patch of patches)
+            {
+                content = diff.applyPatch(content, patch);
+            }
+            fs.writeFileSync(file, content, 'utf-8');
+        } catch (e) {
+            console.error(e);
+        }
+    }
+}
 
 const check_zlxc_proc = (cwd) => etask(function* () {
     let res = yield exec_and_record(['ps', '-aux'], {cwd, hdr: 'zlxc run status'},
@@ -75,14 +107,13 @@ const check_zlxc_proc = (cwd) => etask(function* () {
 
 const run = {
     command: 'run',
+    args: '<id>',
+    builder: yargs => yargs.positional('id', {describe: 'zon prefix'}),
     handler: (opt) => etask(function* () {
         this.on('uncaught', console.error.bind(console));
-        this.finally(()=>console.log('DONE'));
-        if (!process.argv[2]) {
-            return console.log('pass number to create zon copy folder');
-        }
+        this.finally(() => console.log('DONE'));
         let base_path = os.homedir();
-        let zone_dir = path.join(base_path, 'zon' + process.argv[2]);
+        let zone_dir = path.join(base_path, 'zon' + opt._[1]);
 
         const patches_map = yield create_patches(zone_dir);
         const zlxc = yield check_zlxc_proc(zone_dir);
@@ -95,19 +126,7 @@ const run = {
         yield exec_and_record(['cp', '-a', path.join(base_path, '.zon'), zone_dir],
             {hdr: '.zon copy'}, '_root_copy', '-a');
 
-        if (patches_map?.size)
-        {
-            console.log('Apply patch');
-            for (let [file, patch] of patches_map) {
-                let patch_name = path.join(path.dirname(file), path.basename(file)+'.patch');
-                try {
-                    fs.writeFileSync(patch_name, patch, 'utf8');
-                    yield apply_patch(patch_name);
-                } finally {
-                    fs.existsSync(patch_name) && fs.unlinkSync(patch_name);
-                }
-            }
-        }
+        apply_patches(patches_map);
 
         process.env.BUILD = 'app';
         yield exec_and_record(['jtools', 'jselbuild', '-c', 'app'],
@@ -119,14 +138,13 @@ const run = {
         yield exec_and_record(['jmake', 'cm', 'release'],
             {cwd: zone_dir, hdr: 'build release'}, 'jmake', 'cm release');
 
-        if (zlxc)
-        {
+        if (zlxc) {
             console.log('Running zlxc...');
             yield exec_and_record(['zlxc', ...zlxc.split(' ')],
-                {cwd: zone_dir, log: d=>console.log(d)},'zlxc', zlxc);
+                {cwd: zone_dir, transparent_log: true,}, 'zlxc', zlxc);
         }
     }),
-}
+};
 
 yargs_root.scriptName('setup_zon')
     .command(run)
@@ -134,6 +152,5 @@ yargs_root.scriptName('setup_zon')
     .help()
     .demandCommand()
     .recommendCommands()
-    .strict()
     .wrap(yargs_root.terminalWidth())
     .argv;

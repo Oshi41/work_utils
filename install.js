@@ -6,9 +6,10 @@ const bash_path = path.join(os.homedir(), '.bashrc');
 
 const main = ()=>{
     const map = new Map();
-    for (let basename of fs.readdirSync('commands'))
+    let dir = path.resolve('commands');
+    for (let basename of fs.readdirSync(dir))
     {
-        let file = path.join(__dirname, basename);
+        let file = path.join(dir, basename);
         let alias = 'alias '+path.basename(file, path.extname(file));
         map.set(alias, alias+`="node ${file}"`);
     }
