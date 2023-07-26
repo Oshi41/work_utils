@@ -9,13 +9,25 @@ const main = ()=>{
     for (let basename of fs.readdirSync('commands'))
     {
         let file = path.join(__dirname, basename);
-        let alias = path.basename(file, path.extname(file));
-        map.set('alias '+alias, `node ${file}`)
+        let alias = 'alias '+path.basename(file, path.extname(file));
+        map.set(alias, alias+`="node ${file}"`);
     }
     let lines = fs.readFileSync(bash_path, 'utf-8').split('\n');
     let keys = Array.from(map.keys());
-    let upd = lines.filter(x=>keys.every(a=>!x.includes(a)));
-    fs.writeFileSync(bash_path, upd.join('\n'), {encoding: 'utf8'});
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
+        let key = keys.find(x=>line.includes(x));
+        if (key)
+        {
+            lines[i] = map.get(key);
+            map.delete(key);
+        }
+    }
+    for (let [, alias] of map) {
+        lines.push(alias);
+    }
+    fs.writeFileSync(bash_path, lines.join('\n'), 'utf-8');
+    console.log('DONE');
 };
 
 if (!module.parent)
