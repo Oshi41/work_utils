@@ -75,16 +75,17 @@ const create_patches = (root) => etask(function* () {
 const apply_patches = patch_map => {
     if (!patch_map.size)
         return;
-    console.log('Apply patch');
     for (let [file, patch_raw] of patch_map) {
         let content = fs.readFileSync(file, 'utf-8');
         try {
             let patches = diff.parsePatch(patch_raw);
             for (let patch of patches)
-            {
                 content = diff.applyPatch(content, patch);
+            if (typeof content == 'string')
+            {
+                fs.writeFileSync(file, content, 'utf-8');
+                console.log('Apply patch for', file);
             }
-            fs.writeFileSync(file, content, 'utf-8');
         } catch (e) {
             console.error(e);
         }
