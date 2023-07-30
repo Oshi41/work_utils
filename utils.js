@@ -60,7 +60,7 @@ const remove = (db, q, sync_et = null) => etask(function* () {
 
 /**
  * @typedef {Object} exec_time
- * @property {Date} date - scheduled test date
+ * @property {Date} date - Execution start timestamp
  * @property {Number} time  - running time
  * @property {string} file - relative zon path / exec file name
  * @property {string?} params - run params / test grep / etc
@@ -151,6 +151,7 @@ E.tables = () => etask(function* () {
         // Public API
         dbs.exec_time = {
             add: opt => insert(exec_time, opt, sync),
+            find: opt=>find(exec_time, opt),
             avg: opt => etask(function* () {
                 let docs = yield find(exec_time, opt, {time: 1});
                 let sum = docs.map(x=>x.time).reduce((p, c) => p+c, 0);
@@ -276,8 +277,12 @@ E.exec_and_record = (fn, file, params = '', {
     } finally {
         let run_time = new Date() - start;
         yield exec_time.add({
-            date: start, file, params: params,
-            time: run_time, error: err
+            date: start,
+            file,
+            params: params,
+            time: run_time,
+            error: err,
+            success: !err,
         });
         if (log) {
             const time = yield exec_time.avg({file, params});

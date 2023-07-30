@@ -107,14 +107,15 @@ const check_zlxc_proc = (cwd) => etask(function* () {
 });
 
 const run = {
-    command: 'run',
+    command: '$0',
     args: '<id>',
+    describe: 'Reinstall zon folder',
     builder: yargs => yargs.positional('id', {describe: 'zon prefix'}),
     handler: (opt) => etask(function* () {
         this.on('uncaught', console.error.bind(console));
         this.finally(() => console.log('DONE'));
         let base_path = os.homedir();
-        let zone_dir = path.join(base_path, 'zon' + opt._[1]);
+        let zone_dir = path.join(base_path, 'zon' + opt._[0]);
 
         const patches_map = yield create_patches(zone_dir);
         const zlxc = yield check_zlxc_proc(zone_dir);
@@ -147,7 +148,7 @@ const run = {
     }),
 };
 
-yargs_root.scriptName('setup_zon')
+yargs_root
     .command(run)
     .completion('bash_completion', false)
     .help()

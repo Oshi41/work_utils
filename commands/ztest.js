@@ -63,7 +63,8 @@ const run_files = (files, opt) => etask(function* () {
 });
 
 const run = {
-    command: 'run',
+    command: '$0',
+    describe: 'Runs tests near changed files, check code style',
     builder: yargs => yargs
         .option('separate', {
             desc: 'Run each test case separately',
