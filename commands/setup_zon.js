@@ -37,7 +37,7 @@ const exec_and_record = (args, opt, file, descr) => {
  */
 const create_patches = (root) => etask(function* () {
     if (!fs.existsSync(root))
-        return new Map();
+        return;
     let map = yield parse_cvs_status(root);
     let changes = Array.from(map?.entries() || []).filter(([, x]) => x.modified);
     console.log(`Found ${changes.length} changes, creating patches`);
