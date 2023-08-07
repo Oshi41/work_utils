@@ -73,7 +73,7 @@ const create_patches = (root) => etask(function* () {
 });
 
 const apply_patches = patch_map => {
-    if (!patch_map.size)
+    if (!patch_map?.size)
         return;
     for (let [file, patch_raw] of patch_map) {
         let content = fs.readFileSync(file, 'utf-8');
