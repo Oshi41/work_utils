@@ -109,8 +109,17 @@ const run = {
             console.error(`${failed.length} tests failed:\n${failed.join('\n')}`);
 
         file2host = yield file2host;
-        file2host = file2host.stdout.split('\n').find(x => x.includes('changes on')) || 'no host changed';
-        console.log(file2host);
+        file2host = file2host.stdout.split('\n');
+        let index = file2host.findIndex(x => x.includes('changes on'));
+        if (index < 0)
+            file2host = ['no releasing servers'];
+        else {
+            file2host = file2host.slice(index);
+            index = file2host.findIndex(x=>x.includes(']'));
+            if (index >= 0)
+                file2host = file2host.slice(0, index);
+        }
+        console.log(file2host.join('\n'));
         console.log('DONE');
     }),
 }

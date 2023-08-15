@@ -1,11 +1,12 @@
 const yargs_root = require('yargs');
 const _ = require('lodash');
-const {zrequire, parse_cvs_status, exec_and_record: r_exec, tables} = require("../utils.js");
+const {zrequire, parse_cvs_status, exec_and_record: r_exec, tables} = require("utils.js");
 const etask = zrequire('../../util/etask.js');
 const exec = zrequire('../../util/exec.js');
 const date = zrequire('../../util/date.js');
 const cli = zrequire('../../util/cli.js');
 const mongo_util = zrequire('../../util/mongo_util.js');
+const E = exports;
 
 const exec_and_record = (args, opt, file, descr) => {
     if (opt.hdr) {
@@ -66,6 +67,10 @@ const run = {
         const {exec_time} = yield tables();
         const search = {date: {$gte: yield last_reboot_time_lin()}, success: true};
         let prev_run = yield exec_time.find({file: 'zupdate', ...search});
+        if (!prev_run?.length)
+        {
+
+        }
         if (!prev_run?.length || opt.force) {
             yield exec_and_record(['zupdate'],
                 {hdr: 'zupdate', transparent_log: true}, 'zupdate');
@@ -95,3 +100,5 @@ yargs_root.scriptName('greet')
     .recommendCommands()
     .wrap(yargs_root.terminalWidth())
     .argv;
+
+E.last_reboot_time_lin = last_reboot_time_lin;

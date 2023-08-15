@@ -13,7 +13,8 @@
     "@seald-io/nedb": "^4.0.2",
     "lodash4": "^2.0.0",
     "yargs": "^17.7.2",
-    "diff": "^5.1.0"
+    "diff": "^5.1.0",
+    "shell-history": "^2.0.0"
   },
   "devDependencies": {
     "@types/yargs": "^17.0.24",
