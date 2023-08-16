@@ -321,11 +321,16 @@ E.parse_cvs_status = (root) => E.exec_and_record(() => etask(function* () {
             if (!rel_path) {
                 continue;
             }
+            if (rel_path.includes('Attic')
+                && !rel_path.toLowerCase().endsWith('.rcs'))
+            {   // locally modified file
+                rel_path = rel_path.replace('Attic/', '');
+            }
             let upd = obj => {
                 let key = path.join(root, rel_path);
                 let source = result.get(key) || {}
                 result.set(key, Object.assign(source, obj));
-            }
+            };
             if (lines[i].includes('Locally')) {
                 upd({modified: true});
             }
