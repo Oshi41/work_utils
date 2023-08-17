@@ -40,8 +40,7 @@ const run_files = (files, opt) => etask(function* () {
             const success = yield tables.exec_time
                 .avg({file: relative, params: grep, success: true});
             let res = yield r_exec({cmd, opt: {
-                    cwd, env: process.env, stdall: 'pipe',
-                    out: 'retval', encoding: 'utf8',}
+                    cwd, env: process.env, encoding: 'utf8',}
             }, relative, grep, {time: success});
             let header = [`[${i + 1}/${files.length}]`];
             if (greps.length > 1)
