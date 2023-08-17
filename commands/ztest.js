@@ -47,7 +47,7 @@ const run_files = (files, opt) => etask(function* () {
                 header.unshift(`[${j + 1}/${greps.length}]`);
             header.push(`${relative}: ${grep} `)
             header = header.join(' ');
-            let err_msg = res?.retval && res.stderr.substring(res.stderr.lastIndexOf('CRIT: '));
+            let err_msg = res?.retval && res.stderr.substring(res.stderr.indexOf('CRIT: '));
             let print = err_msg ? console.error : console.log;
             let msg = err_msg ? red + '☒ ' + header + '\n' + err_msg + reset
                 : green + '✓ ' + header + ' ' + reset;
