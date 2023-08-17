@@ -97,7 +97,7 @@ const run = {
 
         if (!opt.skip_release) {
             yield exec_and_record('building new release', {
-                cmd: ['jmake', '-cm', 'release'],
+                cmd: ['jmake', 'cm', 'release'],
                 opt: {cwd: zroot,}
             }, 'jmake', 'cm release', {should_throw: true});
         }
