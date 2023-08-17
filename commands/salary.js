@@ -2,6 +2,7 @@ const yargs_root = require('yargs');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const _ = require('lodash');
 const {zrequire} = require('../utils.js');
 const etask = zrequire('../../util/etask.js');
 const date = zrequire('../../util/date.js');
@@ -393,8 +394,7 @@ const today = {
             alias: 'f',
             type: 'boolean',
             describe: 'Force updating currency exchange rate',
-        })
-    ,
+        }),
     handler: (argv)=>etask(function* (){
         keyring.init();
         let key_id = 'exchange.json';
@@ -412,6 +412,7 @@ const today = {
         let curs = argv.currency.map(x=>x.toLowerCase()).filter(x=>map.has(x));
         if (!curs?.length)
             return console.error('Select one from listed currencies:', curs);
+        curs = _.sortBy(curs, x=>map.get(x));
         let username = process.env.USER;
         let {body} = yield wget('http://web.brightdata.com/att/daily/status?login='+username);
         let {hours: {total}} = JSON.parse(body);
