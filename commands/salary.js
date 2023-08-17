@@ -121,12 +121,12 @@ const install = {
                 country: yield readline('Enter you country', nonull_str),
                 city: yield readline('Enter you city', nonull_str),
                 zip: yield readline('Enter you zip code', nonull_str),
-                address: yield readline('Enter your address (no zip code)', nonull_str),
+                address: yield readline('Enter your address', nonull_str),
                 bank_name: yield readline('Enter your full bank name. ' +
-                    'Example: BANGKOK BANK PUBLIC COMPANY LIMITED', nonull_str),
+                    'Example "BANGKOK BANK PUBLIC COMPANY LIMITED"', nonull_str),
                 card_number: yield readline('Enter your card number', nonull_str),
                 swift: yield readline('Enter you bank SWIFT. Example: ' +
-                    'BKKBTHBK', nonull_str),
+                    '"BKKBTHBK"', nonull_str),
             },
             settings: {
                 currency: 'USD',
@@ -134,8 +134,8 @@ const install = {
             information: {},
             products: [{
                 description: yield readline('Enter what kind of service' +
-                    ' do you provide. Example: Software engineering' +
-                    ' service', nonull_str) + ' since %s' +
+                    ' do you provide. Example: "Software engineering' +
+                    ' service"', nonull_str) + ' since %s' +
                     ' to %s. according to Contractor Agreement as of ',
                 price: yield readline('Enter you $/hour', validate_pos_num),
             }],
@@ -155,7 +155,7 @@ const install = {
         {
             data.products.push({
                 description: 'A monthly fee, %s according to Contractor '
-                    +'Agreement as of '+data._contract_start,
+                    +'Agreement as of '+contract_start,
                 price: yield readline('Enter you $/month', validate_pos_num),
                 quantity: 1,
             });

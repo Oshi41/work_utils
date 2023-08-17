@@ -351,7 +351,7 @@ E.parse_cvs_status = (root) => E.exec_and_record(() => etask(function* () {
 E.get_test_type = (file) => {
     if (fs.statSync(file)?.isFile()) {
         let txt = fs.readFileSync(file, 'utf8');
-        const is_test = /^describe\(/g.test(txt) || txt.includes(' describe(');
+        const is_test = [/\ndescribe\(/g, / describe\(/g].some(x=>x.test(txt));
         if (is_test)
             return txt.includes('selenium.') ? 'selenium' : 'mocha';
     }
